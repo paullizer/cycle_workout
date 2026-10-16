@@ -39,6 +39,50 @@ def _event(builder: FitFileBuilder, timestamp: int, event_type: EventType):
     builder.add(event)
 
 
+def course_point_details(plan: Plan) -> list[dict]:
+    starts = {step.start: step for step in plan.steps if step.kind == "interval"}
+    ends = {step.end: step for step in plan.steps if step.kind == "interval"}
+    interval_numbers = {
+        index: number for number, step in enumerate(
+            (step for step in plan.steps if step.kind == "interval"), 1
+        ) for index in (step.start, step.end)
+    }
+    details = []
+    for cue in plan.cues:
+        watts = None
+        fit_type = "generic"
+        if cue.kind == "interval":
+            step = starts[cue.index]
+            watts = {"low": step.low, "high": step.high}
+            name = f"INT{interval_numbers[cue.index]} GO {step.low}-{step.high}W"
+            if len(name) > 16:
+                name = f"I{interval_numbers[cue.index]} GO {step.low}-{step.high}"
+        elif cue.kind == "interval_end":
+            step = ends[cue.index]
+            watts = {"low": step.low, "high": step.high}
+            name = f"INT{interval_numbers[cue.index]} END"
+        elif cue.kind == "turnaround":
+            name = "TURN PRESS LAP"
+            fit_type = "u_turn"
+        elif cue.kind == "shift":
+            effort = "EASY" if cue.text.startswith("Shift down, ") else "HARD"
+            grade = cue.text.split(", ", 1)[1].split(" ", 1)[0]
+            name = f"SHIFT {effort} {grade}"
+            if len(name) > 16:
+                name = f"SHIFT {'E' if effort == 'EASY' else 'H'} {grade}"
+        else:
+            name = "COURSE END"
+        details.append({
+            "point_index": cue.index,
+            "distance_m": plan.points[cue.index].distance,
+            "type": cue.kind,
+            "target_watts": watts,
+            "name": name,
+            "fit_type": fit_type,
+        })
+    return details
+
+
 def course_fit(plan: Plan) -> bytes:
     timestamp = int(time.time()) * 1000
     builder = _builder(FileType.COURSE, timestamp)
@@ -59,11 +103,9 @@ def course_fit(plan: Plan) -> bytes:
     lap.end_position_long = plan.points[-1].lon
     builder.add(lap)
     _event(builder, timestamp, EventType.START)
-    cues = defaultdict(list)
-    for cue in plan.cues:
-        cues[cue.index].append(cue)
-    interval_starts = {s.start: s for s in plan.steps if s.kind == "interval"}
-    interval_ends = {s.end: s for s in plan.steps if s.kind == "interval"}
+    course_points = defaultdict(list)
+    for detail in course_point_details(plan):
+        course_points[detail["point_index"]].append(detail)
     cue_index = 0
     for index, point in enumerate(plan.points):
         record = RecordMessage()
@@ -73,27 +115,17 @@ def course_fit(plan: Plan) -> bytes:
         record.altitude = point.elevation
         record.distance = point.distance
         builder.add(record)
-        for cue in cues[index]:
+        for detail in course_points[index]:
             course_point = CoursePointMessage()
             course_point.message_index = cue_index
             course_point.timestamp = record.timestamp
             course_point.position_lat = point.lat
             course_point.position_long = point.lon
             course_point.distance = point.distance
-            course_point.type = CoursePoint.GENERIC
-            name = cue.text
-            if cue.kind == "interval":
-                step = interval_starts[index]
-                name = f"S {step.low}-{step.high}"
-            elif cue.kind == "interval_end":
-                step = interval_ends[index]
-                name = f"E {step.low}-{step.high}"
-            elif cue.kind == "turnaround":
-                name = "TURN AROUND"
-                course_point.type = CoursePoint.U_TURN
-            elif cue.kind == "shift":
-                name = cue.text.replace("Shift down, ", "Down ").replace("Shift up, ", "Up ").replace(" ramp", "")
-            course_point.course_point_name = name
+            course_point.type = (
+                CoursePoint.U_TURN if detail["fit_type"] == "u_turn" else CoursePoint.GENERIC
+            )
+            course_point.course_point_name = detail["name"]
             builder.add(course_point)
             cue_index += 1
     _event(builder, timestamp + round(plan.duration) * 1000, EventType.STOP_ALL)
