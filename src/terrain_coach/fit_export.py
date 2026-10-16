@@ -84,10 +84,10 @@ def course_fit(plan: Plan) -> bytes:
             name = cue.text
             if cue.kind == "interval":
                 step = interval_starts[index]
-                name = f"{step.low}-{step.high}W start"
+                name = f"S {step.low}-{step.high}"
             elif cue.kind == "interval_end":
                 step = interval_ends[index]
-                name = f"End {step.low}-{step.high}W"
+                name = f"E {step.low}-{step.high}"
             elif cue.kind == "turnaround":
                 name = "TURN AROUND"
                 course_point.type = CoursePoint.U_TURN
