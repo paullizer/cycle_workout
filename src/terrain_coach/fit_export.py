@@ -40,27 +40,23 @@ def _event(builder: FitFileBuilder, timestamp: int, event_type: EventType):
 
 
 def course_point_details(plan: Plan) -> list[dict]:
-    starts = {step.start: step for step in plan.steps if step.kind == "interval"}
-    ends = {step.end: step for step in plan.steps if step.kind == "interval"}
-    interval_numbers = {
-        index: number for number, step in enumerate(
-            (step for step in plan.steps if step.kind == "interval"), 1
-        ) for index in (step.start, step.end)
-    }
+    intervals = [step for step in plan.steps if step.kind == "interval"]
+    starts = {step.start: (number, step) for number, step in enumerate(intervals, 1)}
+    ends = {step.end: (number, step) for number, step in enumerate(intervals, 1)}
     details = []
     for cue in plan.cues:
         watts = None
         fit_type = "generic"
         if cue.kind == "interval":
-            step = starts[cue.index]
+            number, step = starts[cue.index]
             watts = {"low": step.low, "high": step.high}
-            name = f"INT{interval_numbers[cue.index]} GO {step.low}-{step.high}W"
+            name = f"INT{number} GO {step.low}-{step.high}W"
             if len(name) > 16:
-                name = f"I{interval_numbers[cue.index]} GO {step.low}-{step.high}"
+                name = f"I{number} GO {step.low}-{step.high}"
         elif cue.kind == "interval_end":
-            step = ends[cue.index]
+            number, step = ends[cue.index]
             watts = {"low": step.low, "high": step.high}
-            name = f"INT{interval_numbers[cue.index]} END"
+            name = f"INT{number} END"
         elif cue.kind == "turnaround":
             name = "TURN PRESS LAP"
             fit_type = "u_turn"
