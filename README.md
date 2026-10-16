@@ -110,6 +110,15 @@ firmware may shorten cue text or limit workout steps; plans over 200 steps
 include a warning. Both files use the official FIT profile via `fit-tool`;
 device behavior still needs verification on your particular Edge.
 
+### Terrain Coach Connect IQ field
+
+`datafield/` contains an offline Monkey C data field for Edge 540/840/1040/1050:
+3-second power versus the active interval range, estimated next-start countdown,
+and nearby shift cues. Build, simulator testing, and USB sideload instructions
+are in [`datafield/BUILD.txt`](datafield/BUILD.txt). Course-point names follow
+[`docs/plan-format.md`](docs/plan-format.md); synthetic FIT fixtures are in
+`samples/`. The field reads course navigation cues, not the workout step stream.
+
 **Garmin Connect alternative:** on the official website, use
 **Training & Planning → Courses → Import** for the course FIT if supported,
 then **Send to Device** and sync through the official app or Garmin Express.

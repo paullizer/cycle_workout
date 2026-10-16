@@ -1,0 +1,20 @@
+Synthetic Connect IQ fixtures (no personal ride/location data)
+============================================================
+terrain-course.fit: 2 km straight-line course, 10 m records, flat elevation.
+terrain-activity.fit: matching GPS/distance stream, 1 Hz, speed 10 m/s,
+200 seconds. Power cycles 180 W / 220 W / 260 W every 10 seconds;
+seconds 190-199 contain genuine zero power.
+
+Course points:
+  500 m   S 210-230
+  700 m   Down 6%
+ 1000 m   E 210-230
+ 1200 m   S 210-          (deliberately malformed)
+ 1400 m   S 210-230
+ 1600 m   Up -3%
+ 1800 m   E 210-230
+
+The grade labels deliberately exercise shift parsing, not terrain modeling.
+Both files use the existing fit-tool dependency and the planner course exporter.
+Course playback is distinct from activity FIT sensor playback; see
+datafield/BUILD.txt for simulator limitations and the manual checklist.
