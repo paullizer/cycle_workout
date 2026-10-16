@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Terrain Coach</title>
+  <style>
+    body { font: 16px system-ui; color: #183c36; background: #f4f7f4; max-width: 980px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 2.5rem; margin-bottom: .4rem; }
+    fieldset { border: 1px solid #bdcec5; border-radius: 8px; background: white; padding: 1.2rem; margin: 1rem 0; }
+    legend { font-weight: bold; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+    label { display: flex; flex-direction: column; gap: .35rem; }
+    input, select, button { font: inherit; padding: .6rem; border-radius: 4px; border: 1px solid #9eafa6; }
+    input[type=file] { max-width: 90%; }
+    button { cursor: pointer; background: #176554; color: white; margin: .4rem 0; }
+    .remove { background: #74412c; }
+    #status { white-space: pre-wrap; padding: 1rem 0; }
+    small { color: #455c52; }
+    a { color: #176554; }
+  </style>
+</head>
+<body>
+  <h1>Terrain Coach</h1>
+  <p>Terrain-aware cycling workouts for your Garmin Edge. Runs on this computer; no uploads to cloud services.</p>
+  <form id="planner">
+    <fieldset><legend>Route</legend>
+      <label>GPX, TCX, or FIT (GPS and elevation required, maximum 10 MiB)
+        <input id="route" type="file" accept=".gpx,.tcx,.fit" required>
+      </label>
+      <p><small>Export a route from Ride with GPS, Garmin Connect, Strava, or Komoot. FIT activity files with GPS are also accepted.</small></p>
+      <label>Route handling
+        <select id="mode"><option value="truncate">Follow uploaded route; truncate if too long</option><option value="out-and-back">Use uploaded route as outbound; turn around and retrace</option></select>
+      </label>
+      <p><small>Out-and-back always returns to the start. Truncation does not plan your ride home. Check access, traffic and safe turnaround points.</small></p>
+    </fieldset>
+    <fieldset><legend>Rider and bike</legend><div class="grid">
+      <label>FTP (W)<input id="ftp" type="number" min="50" max="1000" value="238" required></label>
+      <label>Rider weight (lb)<input id="weight" type="number" min="50" max="500" step=".1" value="184.8" required></label>
+      <label>Bike + gear (lb)<input id="bike" type="number" min="5" max="150" step=".1" value="20" required></label>
+      <label>Tire / surface<select id="surface"><option value="gravel">Gravel</option><option value="road">Road</option></select></label>
+      <label>Position<select id="position"><option value="hoods">Hoods</option><option value="upright">Upright</option><option value="drops">Drops</option><option value="aero">Aero</option></select></label>
+    </div></fieldset>
+    <fieldset><legend>Workout</legend><div class="grid">
+      <label>Minimum duration (H:MM)<input id="minimum" value="2:30" pattern="[0-9]{1,2}:[0-5][0-9]" required></label>
+      <label>Maximum duration (H:MM)<input id="maximum" value="2:45" pattern="[0-9]{1,2}:[0-5][0-9]" required></label>
+      <label>Endurance low<input id="low" type="number" min="1" max="2000" value="60" required></label>
+      <label>Endurance high<input id="high" type="number" min="1" max="2000" value="72" required></label>
+      <label>Endurance units<select id="unit"><option value="percent">% FTP</option><option value="watts">Watts</option></select></label>
+      <label>Grade variation band (percentage points)<input id="tolerance" type="number" min=".2" max="10" step=".1" value="1.5" required></label>
+    </div></fieldset>
+    <h2>Interval sets</h2>
+    <p><small>Placement times refer to estimated elapsed ride time. “Last after” applies to the last interval in that set. Remove all sets for endurance only.</small></p>
+    <div id="sets"></div>
+    <button type="button" id="add">Add interval set</button>
+    <p><button type="submit" id="generate">Generate Garmin files + cue sheet</button></p>
+  </form>
+  <div id="status" role="status" aria-live="polite"></div>
+  <p>Estimated speeds assume no wind or stops. Power targets take priority when duration, terrain, or timing rules conflict;
+    inspect warnings and partial matches in the cue sheet before riding.</p>
+  <p><a href="/docs">Local API documentation</a> · Files are generated in memory, not stored by Terrain Coach.</p>
+  <template id="set-template">
+    <fieldset class="interval-set"><legend>Interval set</legend><div class="grid">
+      <label>Count<input name="count" type="number" min="1" max="30" value="3" required></label>
+      <label>Duration (minutes)<input name="duration" type="number" min=".2" max="120" step=".1" value="10" required></label>
+      <label>Power low (W)<input name="power_low" type="number" min="1" max="2000" value="210" required></label>
+      <label>Power high (W)<input name="power_high" type="number" min="1" max="2000" value="230" required></label>
+      <label>Recovery (minutes)<input name="recovery" type="number" min="0" max="120" step=".1" value="5" required></label>
+      <label>All intervals after (H:MM)<input name="after" value="0:00" pattern="[0-9]{1,2}:[0-5][0-9]" required></label>
+      <label>Last interval after (H:MM)<input name="last_after" value="2:00" pattern="[0-9]{1,2}:[0-5][0-9]" required></label>
+    </div><button type="button" class="remove">Remove set</button></fieldset>
+  </template>
+  <script>
+    const byId = id => document.getElementById(id);
+    const number = id => Number(byId(id).value);
+    const seconds = value => { const [h, m] = value.split(":").map(Number); return h * 3600 + m * 60; };
+    byId("add").onclick = () => {
+      if (document.querySelectorAll(".interval-set").length >= 10) return;
+      const node = byId("set-template").content.cloneNode(true);
+      node.querySelector(".remove").onclick = event => event.target.closest("fieldset").remove();
+      byId("sets").append(node);
+    };
+    byId("add").click();
+    let downloadUrl;
+    byId("planner").onsubmit = async event => {
+      event.preventDefault();
+      byId("generate").disabled = true;
+      byId("status").textContent = "Planning terrain and writing Garmin files…";
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+      try {
+        const rider = {ftp: number("ftp"), rider_weight_lb: number("weight"), bike_weight_lb: number("bike"),
+                       surface: byId("surface").value, position: byId("position").value};
+        const intervals = [...document.querySelectorAll(".interval-set")].map(set => {
+          const value = name => set.querySelector(`[name="${name}"]`).value;
+          return {count: Number(value("count")), duration_seconds: Number(value("duration")) * 60,
+                  power_low: Number(value("power_low")), power_high: Number(value("power_high")),
+                  recovery_seconds: Number(value("recovery")) * 60,
+                  after_seconds: seconds(value("after")), last_after_seconds: seconds(value("last_after"))};
+        });
+        const spec = {duration_min_seconds: seconds(byId("minimum").value), duration_max_seconds: seconds(byId("maximum").value),
+                      endurance_low: number("low"), endurance_high: number("high"), endurance_unit: byId("unit").value,
+                      grade_tolerance: number("tolerance") / 100, route_mode: byId("mode").value, intervals};
+        const body = new FormData();
+        body.append("route", byId("route").files[0]);
+        body.append("rider", JSON.stringify(rider));
+        body.append("spec", JSON.stringify(spec));
+        const response = await fetch("/plan", {method: "POST", body});
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(typeof error.detail === "string" ? error.detail : JSON.stringify(error.detail));
+        }
+        downloadUrl = URL.createObjectURL(await response.blob());
+        byId("status").textContent = `Ready. Estimated duration: ${response.headers.get("X-Terrain-Duration")}. Unzip and open cue_sheet.html to review warnings, intervals and fueling before riding.\n`;
+        const link = document.createElement("a");
+        link.href = downloadUrl; link.download = "terrain_coach.zip"; link.textContent = "Download Terrain Coach bundle";
+        byId("status").append(link);
+        link.click();
+      } catch (error) {
+        byId("status").textContent = `Could not generate workout: ${error.message}`;
+      } finally {
+        byId("generate").disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
