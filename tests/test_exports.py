@@ -75,9 +75,9 @@ class ExportTests(unittest.TestCase):
     def test_course_points_have_turnaround_and_watt_targets(self):
         cues = messages(self.course, CoursePointMessage)
         self.assertTrue(any(c.type == CoursePoint.U_TURN.value for c in cues))
-        self.assertEqual(sum("210-230W start" == c.course_point_name for c in cues), 2)
-        self.assertEqual(sum("End 210-230W" == c.course_point_name for c in cues), 2)
-        starts = [c.distance for c in cues if c.course_point_name == "210-230W start"]
+        self.assertEqual(sum("S 210-230" == c.course_point_name for c in cues), 2)
+        self.assertEqual(sum("E 210-230" == c.course_point_name for c in cues), 2)
+        starts = [c.distance for c in cues if c.course_point_name == "S 210-230"]
         expected = [self.plan.points[s.start].distance for s in self.plan.steps if s.kind == "interval"]
         for actual, desired in zip(starts, expected):
             self.assertAlmostEqual(actual, desired, places=2)

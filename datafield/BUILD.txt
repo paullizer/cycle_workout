@@ -1,0 +1,90 @@
+Terrain Coach / Connect IQ data field
+===================================
+
+Requires Garmin Connect IQ SDK, its device packages for Edge 540, 840, 1040,
+1050, and Java as required by that SDK. Install via Garmin's SDK Manager or
+the official VS Code Monkey C extension. No network permission or phone app
+is used. SDK downloads: https://developer.garmin.com/connect-iq/sdk/
+
+Commands below run from the repository root. Set SDK_HOME to your SDK install
+directory. Create a developer signing key OUTSIDE this checkout; never commit
+it. Follow the SDK's developer-key instructions (a DER RSA private key).
+
+Build each device separately (replace edge540 with edge840/edge1040/edge1050):
+
+  mkdir -p build
+  "$SDK_HOME/bin/monkeyc" -f datafield/monkey.jungle -d edge540 \
+    -y "$HOME/.garmin/developer_key.der" -o build/terrain-coach-edge540.prg
+
+Launch the simulator, then run the device-specific build:
+
+  "$SDK_HOME/bin/connectiq"
+  "$SDK_HOME/bin/monkeydo" build/terrain-coach-edge540.prg edge540
+
+Unit tests (Monkey C's built-in test framework; no extra test library):
+
+  "$SDK_HOME/bin/monkeyc" -f datafield/monkey.jungle -d edge540 -t \
+    -y "$HOME/.garmin/developer_key.der" -o build/terrain-coach-tests.prg
+  "$SDK_HOME/bin/monkeydo" build/terrain-coach-tests.prg edge540 -t
+
+Repeat builds/tests on all four devices. Normal builds omit test functions.
+The SDK and simulator are not bundled with this project.
+
+Simulator FIT checks
+--------------------
+The samples/ directory contains a synthetic 2 km course and matching 200 s
+activity, not anyone's ride. See samples/CONTENTS.txt for the cue schedule.
+Use Simulation > FIT Data > Playback File to replay samples/terrain-activity.fit.
+Start the timer; inspect the rolling power, including recorded zero values.
+Activity playback alone does NOT establish course navigation/course point names.
+If your SDK exposes course navigation simulation, load terrain-course.fit as
+the course, and replay the matching activity from the start. Otherwise use
+the simulator's Activity Info controls for nameOfNextPoint/distanceToNextPoint,
+where offered, and use the Monkey C tests for deterministic boundary checks.
+SDK support for these controls varies; complete the course integration check
+on a real Edge when navigation is unavailable in the simulator.
+
+Expected checks:
+* Before 500 m: next S 210-230, countdown = distance/currentSpeed; at zero
+  the active target becomes 210-230 W.
+* Before 700 m: Down 6% appears at <= 300 m, not above that threshold.
+* At 1000 m: E 210-230 ends the interval.
+* At 1200 m: malformed S 210- is ignored, never applied.
+* At 1400/1800 m: second start/end; before 1600 m show Up -3%.
+* Compare powers below/in/above inclusive target bounds: blue UNDER,
+  green IN, red OVER, also labeled in text.
+* Stop playback/power input: missing power reads --, not zero; zero is valid.
+* No navigation/missing distance: neutral power-only display, cleared target.
+* Zero speed: show distance to start, not an infinite time estimate.
+* Unknown cue inside an interval: preserve the target, show unknown cue.
+* Reset timer/restart navigation and repeat from before the first start.
+
+Only the next course point is available, not a future cue list; start countdown
+cannot look past a shift or turn. Warm-up uses the available 1-3 samples.
+Timer stops clear the power window but preserve interval state. Timer resets
+clear both. Missed S/E points, rerouting, and starting midway through a course
+cannot reliably reconstruct an interval. See docs/plan-format.md.
+
+Sideload over USB
+-----------------
+1. Build the .prg for your exact device, not the test build.
+2. Connect your Edge with a USB data cable.
+3. Copy build/terrain-coach-<device>.prg into Garmin/Apps on the Edge
+   (some hosts use an MTP file-transfer app rather than a mounted drive).
+4. Safely eject/disconnect, then add Terrain Coach as a Connect IQ data field
+   on a cycling data screen. Prefer a wide, three-line field layout; very small
+   layouts may truncate text. This is a field, not a standalone activity.
+5. Separately copy terrain_course.fit and terrain_workout.fit from the planner
+   bundle into Garmin/NewFiles; disconnect to import them.
+6. Load the course and the workout, enable course-point navigation/alerts,
+   pair your power meter, and start both at the route start.
+
+The course cue stream drives this display; it does not control workout steps.
+Verify a short ride on your firmware before relying on cues during training.
+
+Validation status for this checkout
+----------------------------------
+Python regression/fixture tests can run without Garmin software. The authoring
+environment had no Garmin SDK and could not reach developer.garmin.com, so
+Monkey C compilation, unit-test execution, and simulator playback still need
+to be performed using the commands/checklist above. No simulator pass is claimed.
