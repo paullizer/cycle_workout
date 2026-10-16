@@ -85,7 +85,8 @@ nutrition advice.
   for work/recovery power. Explicit interval/recovery targets take priority;
   when the whole-session time-weighted average falls outside the band, the
   cue sheet warns. Not every interval prescription can have an endurance-band
-  session average.
+  session average. The initial energy budget uses requested interval/recovery
+  durations; partial or omitted intervals can shift the achieved average.
 - Shift cues look 200 m ahead for a grade change of at least 3 percentage
   points, with 400 m spacing to avoid repeated alerts. They are suggestions,
   not knowledge of your gearing.

@@ -166,7 +166,7 @@ def _plan_path(points: list[Point], turnaround: int | None, rider: Rider, spec: 
                     occupied.append(recovery)
                     powers[end:recovery_end] = [recovery_power] * (recovery_end - end)
                 if recovery_times[-1] - recovery_times[end] < interval_set.recovery_seconds:
-                    warnings.append(f"{label}: final recovery shortened by the course end.")
+                    warnings.append(f"{label}: recovery shortened by remaining course distance.")
                 cursor = recovery_end
 
     steps = []

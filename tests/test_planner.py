@@ -98,3 +98,23 @@ class PlacementTests(unittest.TestCase):
                                       recovery_seconds=0)]
         plan = plan_workout(flat_route(1000), rider, spec)
         self.assertTrue(any("Whole-session average" in w for w in plan.warnings))
+
+    def test_shift_cues_and_grade_based_endurance_targets(self):
+        points = flat_route(6000)
+        for point in points:
+            distance = point.distance
+            point.elevation = 100 + (
+                0 if distance < 1000 else 0.05 * (distance - 1000) if distance < 3000
+                else 100 - 0.05 * (distance - 3000) if distance < 5000 else 0
+            )
+        assign_grades(points)
+        plan = plan_workout(points, Rider(), WorkoutSpec(
+            duration_min_seconds=60, duration_max_seconds=7200,
+        ))
+        self.assertGreater(plan.powers[150], plan.powers[400])
+        shifts = [c for c in plan.cues if c.kind == "shift"]
+        self.assertTrue(any("Shift down" in c.text and 750 <= plan.points[c.index].distance <= 1000
+                            for c in shifts))
+        self.assertTrue(any("Shift up" in c.text for c in shifts))
+        for cue in shifts:
+            self.assertIn("in 200 m", cue.text)
