@@ -68,6 +68,26 @@ class CoachModel {
 
     function parse(name) {
         if (name == null || name.length() < 3) { return null; }
+        if (name.substring(0, 3).equals("INT")) {
+            var go = name.find(" GO ");
+            if (go != null && digits(name.substring(3, go)) != null) {
+                var target = name.substring(go + 4, name.length());
+                if (target.length() > 0 && target.substring(target.length() - 1, target.length()).equals("W")) {
+                    target = target.substring(0, target.length() - 1);
+                }
+                return bounds("S", target);
+            }
+            if (name.length() > 7 && name.substring(name.length() - 4, name.length()).equals(" END") &&
+                digits(name.substring(3, name.length() - 4)) != null) {
+                return ["E", null, null];
+            }
+        }
+        if (name.substring(0, 1).equals("I")) {
+            var compactGo = name.find(" GO ");
+            if (compactGo != null && digits(name.substring(1, compactGo)) != null) {
+                return bounds("S", name.substring(compactGo + 4, name.length()));
+            }
+        }
         if (name.substring(0, 2).equals("S ") || name.substring(0, 2).equals("E ")) {
             return bounds(name.substring(0, 1), name.substring(2, name.length()));
         }
@@ -80,6 +100,8 @@ class CoachModel {
         }
         if (name.length() > 5 && name.substring(0, 5).equals("Down ")) { return ["DOWN", null, null]; }
         if (name.length() > 3 && name.substring(0, 3).equals("Up ")) { return ["UP", null, null]; }
+        if (name.length() > 11 && name.substring(0, 11).equals("SHIFT EASY ")) { return ["DOWN", null, null]; }
+        if (name.length() > 11 && name.substring(0, 11).equals("SHIFT HARD ")) { return ["UP", null, null]; }
         return null;
     }
 

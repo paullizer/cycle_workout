@@ -3,6 +3,7 @@ import html
 import math
 from dataclasses import asdict
 
+from terrain_coach.fit_export import course_point_details
 from terrain_coach.models import Plan, Rider, WorkoutSpec
 
 MILE = 1609.344
@@ -58,6 +59,7 @@ def plan_summary(plan: Plan, rider: Rider, spec: WorkoutSpec) -> dict:
             {**asdict(cue), "distance_m": plan.points[cue.index].distance,
              "estimated_seconds": plan.times[cue.index]} for cue in plan.cues
         ],
+        "course_points": course_point_details(plan),
     }
 
 

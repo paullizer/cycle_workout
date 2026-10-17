@@ -3,6 +3,11 @@ using Toybox.Test;
 (:test)
 function testCueParsing(logger) {
     var m = new CoachModel();
+    Test.assert(m.parse("INT2 GO 205-219W")[1] == 205);
+    Test.assert(m.parse("INT2 END")[0].equals("E"));
+    Test.assert(m.parse("I50 GO 2000-2000")[2] == 2000);
+    Test.assert(m.parse("SHIFT EASY 5%")[0].equals("DOWN"));
+    Test.assert(m.parse("SHIFT HARD -3%")[0].equals("UP"));
     Test.assert(m.parse("S 210-230")[1] == 210);
     Test.assert(m.parse("E 210-230")[0].equals("E"));
     Test.assert(m.parse("210-230W start")[0].equals("S"));
@@ -20,15 +25,15 @@ function testCueParsing(logger) {
 (:test)
 function testIntervalTransitions(logger) {
     var m = new CoachModel();
-    m.updateCourse("S 210-230", 100, 0, 10);
+    m.updateCourse("INT1 GO 210-230W", 100, 0, 10);
     Test.assert(!m.active && m.countdown == 10);
-    m.updateCourse("S 210-230", 0, 100, 10);
+    m.updateCourse("INT1 GO 210-230W", 0, 100, 10);
     Test.assert(m.active && m.low == 210 && m.high == 230);
     m.updateCourse("Turn left", 100, 100, 10);
     Test.assert(m.active && m.next == null);
-    m.updateCourse("E 210-230", 50, 200, 10);
+    m.updateCourse("INT1 END", 50, 200, 10);
     Test.assert(m.active);
-    m.updateCourse("E 210-230", 0, 250, 10);
+    m.updateCourse("INT1 END", 0, 250, 10);
     Test.assert(!m.active);
     m.updateCourse(null, null, 250, null);
     Test.assert(!m.active && !m.navigating);
@@ -39,16 +44,16 @@ function testIntervalTransitions(logger) {
 function testSkippedZeroAndRepeatedNames(logger) {
     var m = new CoachModel();
     m.updateCourse("S 210-230", 10, 90, 10);
-    m.updateCourse("Down 6%", 290, 110, 10);
+    m.updateCourse("SHIFT EASY 6%", 290, 110, 10);
     Test.assert(m.active && m.shift.equals("DOWN"));
     m.updateCourse("E 210-230", 10, 490, 10);
     m.updateCourse("S 210-230", 200, 510, 10);
     Test.assert(!m.active);
     m.updateCourse("S 210-230", 200, 720, 10);
     Test.assert(m.active);
-    m.updateCourse("Up -3%", 301, 730, 10);
+    m.updateCourse("SHIFT HARD -3%", 301, 730, 10);
     Test.assert(m.shift == null);
-    m.updateCourse("Up -3%", 300, 731, 10);
+    m.updateCourse("SHIFT HARD -3%", 300, 731, 10);
     Test.assert(m.shift.equals("UP"));
     m.updateCourse("Up -3%", 100, 0, 0);
     Test.assert(!m.active);
@@ -66,7 +71,7 @@ function testPowerWindowAndZones(logger) {
     Test.assert(m.power == 220);
     m.updatePower(900, 3000);
     Test.assert(m.power == 220);
-    m.updateCourse("S 210-230", 0, 0, 10);
+    m.updateCourse("INT1 GO 210-230W", 0, 0, 10);
     Test.assert(m.zone().equals("IN"));
     m.updatePower(600, 4000);
     Test.assert(m.zone().equals("OVER"));
@@ -84,13 +89,13 @@ function testPowerWindowAndZones(logger) {
 (:test)
 function testStoppedAndMissingNavigation(logger) {
     var m = new CoachModel();
-    m.updateCourse("S 210-230", 300, 0, 0);
+    m.updateCourse("INT1 GO 210-230W", 300, 0, 0);
     Test.assert(m.countdown == null);
-    m.updateCourse("S 210-230", 0, 300, 10);
+    m.updateCourse("INT1 GO 210-230W", 0, 300, 10);
     Test.assert(m.active);
     m.updateCourse("?", null, 300, 10);
     Test.assert(!m.active && m.low == null);
-    m.updateCourse("E 210-230", 100, 400, 10);
+    m.updateCourse("INT1 END", 100, 400, 10);
     Test.assert(!m.active);
     return true;
 }

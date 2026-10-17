@@ -1,5 +1,7 @@
+import copy
 import io
 import json
+import re
 import unittest
 import zipfile
 
@@ -75,12 +77,52 @@ class ExportTests(unittest.TestCase):
     def test_course_points_have_turnaround_and_watt_targets(self):
         cues = messages(self.course, CoursePointMessage)
         self.assertTrue(any(c.type == CoursePoint.U_TURN.value for c in cues))
-        self.assertEqual(sum("S 210-230" == c.course_point_name for c in cues), 2)
-        self.assertEqual(sum("E 210-230" == c.course_point_name for c in cues), 2)
-        starts = [c.distance for c in cues if c.course_point_name == "S 210-230"]
+        self.assertEqual(sum(c.course_point_name in ("INT1 GO 210-230W", "INT2 GO 210-230W")
+                             for c in cues), 2)
+        self.assertEqual(sum(c.course_point_name in ("INT1 END", "INT2 END") for c in cues), 2)
+        starts = [c.distance for c in cues if c.course_point_name in ("INT1 GO 210-230W", "INT2 GO 210-230W")]
         expected = [self.plan.points[s.start].distance for s in self.plan.steps if s.kind == "interval"]
         for actual, desired in zip(starts, expected):
             self.assertAlmostEqual(actual, desired, places=2)
+
+    def test_every_course_point_name_matches_documented_pattern(self):
+        patterns = (
+            r"INT\d+ GO \d{1,4}-\d{1,4}W",
+            r"I\d+ GO \d{1,4}-\d{1,4}",
+            r"INT\d+ END",
+            r"TURN PRESS LAP",
+            r"SHIFT (?:EASY|HARD) -?\d+%",
+            r"SHIFT [EH] -?\d+%",
+            r"COURSE END",
+        )
+        for cue in messages(self.course, CoursePointMessage):
+            name = cue.course_point_name
+            self.assertLessEqual(len(name), 16)
+            self.assertTrue(any(re.fullmatch(pattern, name) for pattern in patterns), name)
+
+    def test_compact_interval_and_finish_names_stay_within_limit(self):
+        extreme = copy.deepcopy(self.plan)
+        interval_steps = [step for step in extreme.steps if step.kind == "interval"]
+        interval_steps[1].low, interval_steps[1].high = 205, 219
+        names = [cue.course_point_name for cue in messages(course_fit(extreme), CoursePointMessage)]
+        self.assertIn("INT2 GO 205-219W", names)
+        self.assertIn("INT2 END", names)
+
+        extreme = copy.deepcopy(self.plan)
+        for step in extreme.steps:
+            if step.kind == "interval":
+                step.low = step.high = 2000
+        names = [cue.course_point_name for cue in messages(course_fit(extreme), CoursePointMessage)]
+        self.assertIn("I1 GO 2000-2000", names)
+        self.assertTrue(all(len(name) <= 16 for name in names))
+
+        short_spec = WorkoutSpec(
+            route_mode="truncate", duration_min_seconds=60, duration_max_seconds=120,
+        )
+        short_plan = plan_workout(parse_route(GPX, "route.gpx"), self.rider, short_spec)
+        short_names = [cue.course_point_name for cue in messages(course_fit(short_plan), CoursePointMessage)]
+        self.assertIn("COURSE END", short_names)
+        self.assertTrue(all(len(name) <= 16 for name in short_names))
 
     def test_cue_sheet_and_machine_summary(self):
         sheet = cue_sheet(self.plan, self.rider, self.spec)
@@ -91,6 +133,16 @@ class ExportTests(unittest.TestCase):
         summary = plan_summary(self.plan, self.rider, self.spec)
         self.assertEqual(summary["estimated_seconds"], self.plan.duration)
         self.assertTrue(summary["steps"])
+        fit_points = messages(self.course, CoursePointMessage)
+        self.assertEqual(len(summary["course_points"]), len(fit_points))
+        for detail, fit_point in zip(summary["course_points"], fit_points):
+            self.assertAlmostEqual(detail["distance_m"], fit_point.distance, places=2)
+            self.assertEqual(detail["name"], fit_point.course_point_name)
+            self.assertIn(detail["type"], ("interval", "interval_end", "turnaround", "shift", "finish"))
+            if detail["type"] in ("interval", "interval_end"):
+                self.assertEqual(set(detail["target_watts"]), {"low", "high"})
+            else:
+                self.assertIsNone(detail["target_watts"])
 
     def test_report_escapes_warning_text(self):
         self.plan.warnings.append("<script>alert(1)</script>")
@@ -128,6 +180,11 @@ class WebTests(unittest.TestCase):
             self.assertTrue(messages(archive.read("terrain_workout.fit"), WorkoutStepMessage))
             summary = json.loads(archive.read("plan.json"))
             self.assertTrue(590 <= summary["estimated_seconds"] <= 610)
+            fit_points = messages(archive.read("terrain_course.fit"), CoursePointMessage)
+            self.assertEqual(
+                [point["name"] for point in summary["course_points"]],
+                [point.course_point_name for point in fit_points],
+            )
 
     def test_bad_upload_and_invalid_profiles(self):
         for filename, content, rider, spec in (
